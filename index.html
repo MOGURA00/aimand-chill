@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>Aim & Chill</title>
+  <!-- Google AdSense スクリプト -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3759456656810260"
+     crossorigin="anonymous"></script>
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      background: #ccc;
+      font-family: sans-serif;
+    }
+    /* メインコンテナ：中央寄せ＆横幅固定 */
+    #mainContainer {
+      width: 1040px; /* 800px のゲームエリア + 220px のスコアボード + マージン */
+      margin: 20px auto;
+      text-align: center;
+    }
+    /* ゲームタイトル */
+    #gameTitle {
+      margin: 10px 0;
+      font-size: 24px;
+    }
+    /* ゲームエリアラッパー：ゲームエリアとスコアボードを横並びに */
+    #gameAreaWrapper {
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+    }
+    /* ゲームエリアの枠 */
+    #gameContainer {
+      position: relative;
+      width: 800px;
+      height: 600px;
+      border: 3px solid #333;
+      background-color: #f0f0f0; /* デフォルト背景色 */
+      background-size: cover;
+      background-position: center;
+    }
+    #gameCanvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+    /* スコアボード：ゲームエリアの右側に配置 */
+    #scoreboard {
+      width: 220px;
+      margin-left: 20px;
+      padding: 8px;
+      background: rgba(255,255,255,0.9);
+      border: 1px solid #ccc;
+      text-align: left;
+    }
+    #scoreboard .interval {
+      margin-bottom: 6px;
+    }
+    /* 的の設定 */
+    #targetSettings {
+      margin-top: 10px;
+      padding: 8px;
+      background: rgba(255,255,255,0.9);
+      border: 1px solid #ccc;
+      display: inline-block;
+      text-align: left;
+    }
+    #targetSettings label {
+      margin-right: 5px;
+    }
+    /* 背景設定 */
+    #backgroundSettings {
+      margin-top: 10px;
+      padding: 8px;
+      background: rgba(255,255,255,0.9);
+      border: 1px solid #ccc;
+      display: inline-block;
+      text-align: left;
+    }
+    #backgroundSettings label {
+      margin-right: 5px;
+    }
+    /* 言語選択：下部（ドロップダウン形式） */
+    #languageSelector {
+      margin-top: 10px;
+    }
+    #languageSelector select {
+      padding: 5px 10px;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div id="mainContainer">
+    <!-- ゲームタイトル -->
+    <h1 id="gameTitle"></h1>
+    <!-- ゲームエリアラッパー -->
+    <div id="gameAreaWrapper">
+      <!-- ゲームエリア -->
+      <div id="gameContainer">
+        <canvas id="gameCanvas"></canvas>
+      </div>
+      <!-- スコアボード -->
+      <div id="scoreboard">
+        <div class="interval">
+          <strong id="interval10"></strong>
+          <div>
+            <span id="labelHits10"></span>: <span id="correctCount10">0</span><br>
+            <span id="labelAccuracy10"></span>: <span id="accuracy10">0</span>%
+          </div>
+        </div>
+        <div class="interval">
+          <strong id="interval60"></strong>
+          <div>
+            <span id="labelHits60"></span>: <span id="correctCount60">0</span><br>
+            <span id="labelAccuracy60"></span>: <span id="accuracy60">0</span>%
+          </div>
+        </div>
+        <div class="interval">
+          <strong id="interval600"></strong>
+          <div>
+            <span id="labelHits600"></span>: <span id="correctCount600">0</span><br>
+            <span id="labelAccuracy600"></span>: <span id="accuracy600">0</span>%
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- 的の設定 -->
+    <div id="targetSettings">
+      <label id="targetSizeLabel" for="targetSizeSelect"></label>
+      <select id="targetSizeSelect"></select>
+      &nbsp;&nbsp;
+      <label id="targetColorLabel" for="targetColorSelect"></label>
+      <select id="targetColorSelect"></select>
+      <br>
+      <label id="targetMovementSpeedLabel" for="targetSpeedSelect"></label>
+      <select id="targetSpeedSelect"></select>
+    </div>
+    <!-- 背景設定 -->
+    <div id="backgroundSettings">
+      <label id="backgroundSettingLabel" for="backgroundSelect"></label>
+      <select id="backgroundSelect"></select>
+      &nbsp;&nbsp;
+      <input type="file" id="backgroundUpload" accept="image/*" style="display: none;">
+    </div>
+    <!-- 言語選択（下部、ドロップダウン形式） -->
+    <div id="languageSelector">
+      <select id="languageSelect">
+        <option value="en">English</option>
+        <option value="ja">日本語</option>
+        <option value="zh">中文</option>
+        <option value="ko">한국어</option>
+      </select>
+    </div>
+  </div>
+
+  <script>
+    // グローバル変数 target の宣言
+    let target;
+    // 的の動く速さ（px/s）のグローバル変数
+    let targetSpeed = 0; // デフォルトは停止
+    let currentLanguage = 'en';
+
+    // DOM 要素の取得
+    const languageSelect = document.getElementById("languageSelect");
+    const targetSizeSelect = document.getElementById("targetSizeSelect");
+    const targetColorSelect = document.getElementById("targetColorSelect");
+    const targetSpeedSelect = document.getElementById("targetSpeedSelect");
+    const backgroundSelect = document.getElementById("backgroundSelect");
+    const backgroundUpload = document.getElementById("backgroundUpload");
+
+    // 翻訳用の辞書（背景・的動きのテキストも追加）
+    const translations = {
+      en: {
+        gameTitle: "Aim & Chill",
+        interval10: "10 Seconds",
+        interval60: "1 Minute",
+        interval600: "10 Minutes",
+        labelHits: "Hits",
+        labelAccuracy: "Accuracy",
+        targetSizeLabel: "Target Size (px)",
+        targetColorLabel: "Target Color",
+        targetMovementSpeedLabel: "Target Movement Speed",
+        backgroundSettingLabel: "Background",
+        backgroundOptionDefault: "Default",
+        backgroundOptionBlackboard: "Blackboard Green",
+        backgroundOptionBlack: "Black",
+        backgroundOptionWhite: "White",
+        backgroundOptionUpload: "Upload Image"
+      },
+      ja: {
+        gameTitle: "Aim & Chill",
+        interval10: "10秒内",
+        interval60: "1分内",
+        interval600: "10分内",
+        labelHits: "命中数",
+        labelAccuracy: "精度",
+        targetSizeLabel: "的の大きさ (px)",
+        targetColorLabel: "的の色",
+        targetMovementSpeedLabel: "的の動く速さ",
+        backgroundSettingLabel: "背景設定",
+        backgroundOptionDefault: "デフォルト",
+        backgroundOptionBlackboard: "黒板緑",
+        backgroundOptionBlack: "黒色",
+        backgroundOptionWhite: "白色",
+        backgroundOptionUpload: "画像アップロード"
+      },
+      zh: {
+        gameTitle: "Aim & Chill",
+        interval10: "10秒内",
+        interval60: "1分钟内",
+        interval600: "10分钟内",
+        labelHits: "命中数",
+        labelAccuracy: "精度",
+        targetSizeLabel: "目标大小 (px)",
+        targetColorLabel: "目标颜色",
+        targetMovementSpeedLabel: "目标移动速度",
+        backgroundSettingLabel: "背景设置",
+        backgroundOptionDefault: "默认",
+        backgroundOptionBlackboard: "黑板绿",
+        backgroundOptionBlack: "黑色",
+        backgroundOptionWhite: "白色",
+        backgroundOptionUpload: "上传图片"
+      },
+      ko: {
+        gameTitle: "Aim & Chill",
+        interval10: "10초 내",
+        interval60: "1분 내",
+        interval600: "10분 내",
+        labelHits: "명중 수",
+        labelAccuracy: "정확도",
+        targetSizeLabel: "표적 크기 (px)",
+        targetColorLabel: "표적 색상",
+        targetMovementSpeedLabel: "표적 이동 속도",
+        backgroundSettingLabel: "배경 설정",
+        backgroundOptionDefault: "기본",
+        backgroundOptionBlackboard: "칠판 녹색",
+        backgroundOptionBlack: "검정",
+        backgroundOptionWhite: "흰색",
+        backgroundOptionUpload: "이미지 업로드"
+      }
+    };
+
+    // 的の色オプション（言語別）
+    const targetColorOptions = {
+      en: [
+        { label: "Black", value: "black" },
+        { label: "White", value: "white" },
+        { label: "Blue", value: "blue" },
+        { label: "Green", value: "green" },
+        { label: "Red", value: "red" },
+        { label: "Yellow", value: "yellow" },
+        { label: "Pink", value: "pink" },
+        { label: "Light Blue", value: "lightblue" },
+        { label: "Fluorescent Green", value: "lime" }
+      ],
+      ja: [
+        { label: "黒", value: "black" },
+        { label: "白", value: "white" },
+        { label: "青", value: "blue" },
+        { label: "緑", value: "green" },
+        { label: "赤", value: "red" },
+        { label: "黄", value: "yellow" },
+        { label: "ピンク", value: "pink" },
+        { label: "水色", value: "lightblue" },
+        { label: "蛍光緑", value: "lime" }
+      ],
+      zh: [
+        { label: "黑色", value: "black" },
+        { label: "白色", value: "white" },
+        { label: "蓝色", value: "blue" },
+        { label: "绿色", value: "green" },
+        { label: "红色", value: "red" },
+        { label: "黄色", value: "yellow" },
+        { label: "粉色", value: "pink" },
+        { label: "浅蓝", value: "lightblue" },
+        { label: "荧光绿", value: "lime" }
+      ],
+      ko: [
+        { label: "검정", value: "black" },
+        { label: "하양", value: "white" },
+        { label: "파랑", value: "blue" },
+        { label: "초록", value: "green" },
+        { label: "빨강", value: "red" },
+        { label: "노랑", value: "yellow" },
+        { label: "핑크", value: "pink" },
+        { label: "연파랑", value: "lightblue" },
+        { label: "형광녹색", value: "lime" }
+      ]
+    };
+
+    // 背景設定のオプション（固定）
+    function populateBackgroundOptions() {
+      backgroundSelect.innerHTML = "";
+      const opts = [
+        { value: "default", label: translations[currentLanguage].backgroundOptionDefault },
+        { value: "blackboard", label: translations[currentLanguage].backgroundOptionBlackboard },
+        { value: "black", label: translations[currentLanguage].backgroundOptionBlack },
+        { value: "white", label: translations[currentLanguage].backgroundOptionWhite },
+        { value: "upload", label: translations[currentLanguage].backgroundOptionUpload }
+      ];
+      opts.forEach(opt => {
+        const option = document.createElement("option");
+        option.value = opt.value;
+        option.textContent = opt.label;
+        backgroundSelect.appendChild(option);
+      });
+      backgroundSelect.value = "default";
+      updateGameAreaBackground();
+    }
+
+    function updateGameAreaBackground() {
+      const container = document.getElementById("gameContainer");
+      const val = backgroundSelect.value;
+      if(val === "upload") {
+        backgroundUpload.style.display = "inline-block";
+      } else {
+        backgroundUpload.style.display = "none";
+        if(val === "default") {
+          container.style.backgroundColor = "#f0f0f0";
+          container.style.backgroundImage = "";
+        } else if(val === "blackboard") {
+          container.style.backgroundColor = "#006400";
+          container.style.backgroundImage = "";
+        } else if(val === "black") {
+          container.style.backgroundColor = "#000000";
+          container.style.backgroundImage = "";
+        } else if(val === "white") {
+          container.style.backgroundColor = "#ffffff";
+          container.style.backgroundImage = "";
+        }
+      }
+    }
+
+    backgroundSelect.addEventListener("change", updateGameAreaBackground);
+    backgroundUpload.addEventListener("change", function(e) {
+      const file = e.target.files[0];
+      if(file) {
+        const reader = new FileReader();
+        reader.onload = function(event) {
+          const container = document.getElementById("gameContainer");
+          container.style.backgroundImage = `url(${event.target.result})`;
+          container.style.backgroundColor = "";
+          container.style.backgroundSize = "cover";
+          container.style.backgroundPosition = "center";
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+
+    // 言語変更関数
+    function updateLanguage(lang) {
+      currentLanguage = lang;
+      const t = translations[lang];
+      document.getElementById("gameTitle").textContent = t.gameTitle;
+      document.getElementById("interval10").textContent = t.interval10;
+      document.getElementById("interval60").textContent = t.interval60;
+      document.getElementById("interval600").textContent = t.interval600;
+      document.getElementById("labelHits10").textContent = t.labelHits;
+      document.getElementById("labelAccuracy10").textContent = t.labelAccuracy;
+      document.getElementById("labelHits60").textContent = t.labelHits;
+      document.getElementById("labelAccuracy60").textContent = t.labelAccuracy;
+      document.getElementById("labelHits600").textContent = t.labelHits;
+      document.getElementById("labelAccuracy600").textContent = t.labelAccuracy;
+      document.getElementById("targetSizeLabel").textContent = t.targetSizeLabel;
+      document.getElementById("targetColorLabel").textContent = t.targetColorLabel;
+      document.getElementById("targetMovementSpeedLabel").textContent = t.targetMovementSpeedLabel;
+      document.getElementById("backgroundSettingLabel").textContent = t.backgroundSettingLabel;
+      populateTargetColorOptions();
+      populateBackgroundOptions();
+    }
+
+    languageSelect.addEventListener("change", function() {
+      updateLanguage(this.value);
+    });
+    updateLanguage(currentLanguage);
+
+    // 的の大きさドロップダウンの初期化
+    const sizeOpts = [1, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50];
+    sizeOpts.forEach(size => {
+      const option = document.createElement("option");
+      option.value = size;
+      option.textContent = size + "px";
+      targetSizeSelect.appendChild(option);
+    });
+    targetSizeSelect.value = 30;
+    targetSizeSelect.addEventListener("change", function() {
+      target.radius = parseInt(this.value);
+      drawTarget();
+    });
+
+    // 的の色ドロップダウンの初期化
+    function populateTargetColorOptions() {
+      targetColorSelect.innerHTML = "";
+      const options = targetColorOptions[currentLanguage];
+      options.forEach(opt => {
+        const option = document.createElement("option");
+        option.value = opt.value;
+        option.textContent = opt.label;
+        targetColorSelect.appendChild(option);
+      });
+      targetColorSelect.value = "red";
+      if (target) {
+        target.color = targetColorSelect.value;
+      }
+    }
+    populateTargetColorOptions();
+    targetColorSelect.addEventListener("change", function() {
+      target.color = this.value;
+      drawTarget();
+    });
+
+    // 的の動く速さドロップダウンの初期化（0～1000px/s、100px刻みで11段階）
+    targetSpeedSelect.innerHTML = "";
+    for (let speed = 0; speed <= 1000; speed += 100) {
+      const option = document.createElement("option");
+      option.value = speed;
+      option.textContent = speed + " px/s";
+      targetSpeedSelect.appendChild(option);
+    }
+    targetSpeedSelect.value = 0;
+    targetSpeedSelect.addEventListener("change", function() {
+      targetSpeed = parseInt(this.value);
+      if (targetSpeed > 0) {
+        let angle = Math.random() * 2 * Math.PI;
+        target.dx = Math.cos(angle) * targetSpeed;
+        target.dy = Math.sin(angle) * targetSpeed;
+      } else {
+        target.dx = 0;
+        target.dy = 0;
+      }
+    });
+
+    // ゲームロジックのセットアップ
+    const container = document.getElementById("gameContainer");
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    canvas.width = container.clientWidth;
+    canvas.height = container.clientHeight;
+
+    // target の初期設定
+    target = {
+      x: 0,
+      y: 0,
+      radius: parseInt(targetSizeSelect.value),
+      color: targetColorSelect.value,
+      dx: 0,
+      dy: 0
+    };
+
+    function getRandomTarget() {
+      const margin = target.radius + 5;
+      target.x = Math.random() * (canvas.width - margin * 2) + margin;
+      target.y = Math.random() * (canvas.height - margin * 2) + margin;
+      if (targetSpeed > 0) {
+        let angle = Math.random() * 2 * Math.PI;
+        target.dx = Math.cos(angle) * targetSpeed;
+        target.dy = Math.sin(angle) * targetSpeed;
+      }
+    }
+
+    function drawTarget() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.beginPath();
+      ctx.arc(target.x, target.y, target.radius, 0, Math.PI * 2);
+      ctx.fillStyle = target.color;
+      ctx.fill();
+    }
+
+    getRandomTarget();
+    drawTarget();
+
+    // アニメーションループ：的の位置を更新（targetSpeed が 0 以外の場合）
+    let lastTime = performance.now();
+    function animate(time) {
+      let deltaTime = (time - lastTime) / 1000; // 秒単位
+      lastTime = time;
+      if (targetSpeed > 0) {
+        target.x += target.dx * deltaTime;
+        target.y += target.dy * deltaTime;
+        // 枠からはみ出たら反射
+        if (target.x - target.radius < 0) {
+          target.x = target.radius;
+          target.dx = -target.dx;
+        }
+        if (target.x + target.radius > canvas.width) {
+          target.x = canvas.width - target.radius;
+          target.dx = -target.dx;
+        }
+        if (target.y - target.radius < 0) {
+          target.y = target.radius;
+          target.dy = -target.dy;
+        }
+        if (target.y + target.radius > canvas.height) {
+          target.y = canvas.height - target.radius;
+          target.dy = -target.dy;
+        }
+      }
+      drawTarget();
+      requestAnimationFrame(animate);
+    }
+    requestAnimationFrame(animate);
+
+    let clickEvents = [];
+    canvas.addEventListener("click", function(e) {
+      const rect = canvas.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      const clickY = e.clientY - rect.top;
+      const distance = Math.hypot(clickX - target.x, clickY - target.y);
+      const now = Date.now();
+      const isCorrect = distance <= target.radius;
+      clickEvents.push({ timestamp: now, correct: isCorrect });
+      getRandomTarget();
+      if (targetSpeed > 0) {
+        let angle = Math.random() * 2 * Math.PI;
+        target.dx = Math.cos(angle) * targetSpeed;
+        target.dy = Math.sin(angle) * targetSpeed;
+      }
+      drawTarget();
+    });
+
+    function updateScoreboard() {
+      const now = Date.now();
+      const intervals = {
+        '10': 10000,
+        '60': 60000,
+        '600': 600000
+      };
+      Object.keys(intervals).forEach(key => {
+        const windowTime = intervals[key];
+        const events = clickEvents.filter(event => now - event.timestamp <= windowTime);
+        const total = events.length;
+        const correct = events.filter(event => event.correct).length;
+        const accuracy = total > 0 ? ((correct / total) * 100).toFixed(0) : 0;
+        document.getElementById(`correctCount${key}`).textContent = correct;
+        document.getElementById(`accuracy${key}`).textContent = accuracy;
+      });
+      clickEvents = clickEvents.filter(event => now - event.timestamp <= intervals['600']);
+    }
+    setInterval(updateScoreboard, 100);
+  </script>
+</body>
+</html>
+
